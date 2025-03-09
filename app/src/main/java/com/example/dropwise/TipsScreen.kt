@@ -1,5 +1,6 @@
 package com.example.dropwise
 
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -11,9 +12,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.launch
+import com.example.dropwise.BuildConfig
 
 @Composable
-fun TipsScreen() {
+fun TipsScreen(activity: ComponentActivity) {
     val scope = rememberCoroutineScope()
     var tip by remember { mutableStateOf("Buvez un verre d'eau avant chaque repas.") }
 

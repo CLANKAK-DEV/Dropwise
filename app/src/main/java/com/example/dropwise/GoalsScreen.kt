@@ -1,5 +1,6 @@
 package com.example.dropwise
 
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -11,9 +12,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun GoalsScreen() {
+fun GoalsScreen(activity: ComponentActivity) {
     var goal by remember { mutableStateOf("2") }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -23,8 +23,9 @@ fun GoalsScreen() {
     ) {
         Text(
             text = "Objectifs",
-            fontSize = 20.sp,
-            color = Color(0xFF333333)
+            fontSize = 24.sp,
+            color = Color(0xFF333333),
+            style = MaterialTheme.typography.headlineMedium
         )
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
@@ -35,26 +36,11 @@ fun GoalsScreen() {
         )
         Spacer(modifier = Modifier.height(16.dp))
         LinearProgressIndicator(
-            progress = 0.75f,
+            progress = { 0.75f },
+            modifier = Modifier.fillMaxWidth(),
             color = Color(0xFF7ED321),
-            modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "75% de l'objectif atteint",
-            fontSize = 14.sp,
-            color = Color(0xFF333333)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
-        ) {
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(text = "2L - Atteint", color = Color(0xFF333333))
-                Text(text = "1.8L - Non atteint", color = Color(0xFF333333))
-                Text(text = "2L - Atteint", color = Color(0xFF333333))
-            }
-        }
+        Text("75% de l'objectif atteint", color = Color(0xFF333333))
     }
 }

@@ -1,35 +1,37 @@
 package com.example.dropwise
 
+import android.content.Intent
+import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.google.accompanist.pager.ExperimentalPagerApi
-import com.google.accompanist.pager.HorizontalPager
-import com.google.accompanist.pager.rememberPagerState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MainScreen()
+            MainScreen(this)
         }
     }
 
-    @OptIn(ExperimentalPagerApi::class)
     @Composable
-    fun MainScreen() {
-        val pagerState = rememberPagerState()
-        val scope = rememberCoroutineScope()
+    fun MainScreen(activity: ComponentActivity) {
         val tabs = listOf("Dashboard", "Goals", "Tips", "Account")
+        val pagerState = rememberPagerState(pageCount = { tabs.size })
+        val scope = rememberCoroutineScope()
 
         Column(
             modifier = Modifier
@@ -38,11 +40,18 @@ class MainActivity : ComponentActivity() {
         ) {
             TabRow(
                 selectedTabIndex = pagerState.currentPage,
-                containerColor = Color.White
+                containerColor = Color(0xFF4A90E2),
+                contentColor = Color.White
             ) {
                 tabs.forEachIndexed { index, title ->
                     Tab(
-                        text = { Text(title, color = Color(0xFF333333)) },
+                        text = {
+                            Text(
+                                title,
+                                color = if (pagerState.currentPage == index) Color.White else Color(0xFFB0BEC5),
+                                fontSize = 16.sp
+                            )
+                        },
                         selected = pagerState.currentPage == index,
                         onClick = {
                             scope.launch { pagerState.animateScrollToPage(index) }
@@ -51,17 +60,18 @@ class MainActivity : ComponentActivity() {
                 }
             }
             HorizontalPager(
-                count = tabs.size,
                 state = pagerState,
                 modifier = Modifier.weight(1f)
             ) { page ->
                 when (page) {
                     0 -> DashboardScreen()
-                    1 -> GoalsScreen()
-                    2 -> TipsScreen()
-                    3 -> AccountScreen()
+                    1 -> GoalsScreen(activity)
+                    2 -> TipsScreen(activity)
+                    3 -> AccountScreen() // Renamed to avoid conflict
                 }
             }
         }
     }
+
+
 }

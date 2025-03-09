@@ -6,18 +6,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.delay
+import android.util.Log
 
 class SplashActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,46 +27,44 @@ class SplashActivity : ComponentActivity() {
 
     @Composable
     fun SplashScreen() {
-        var quote by remember { mutableStateOf("Dropwise") }
-
         LaunchedEffect(Unit) {
-            val model = GenerativeModel("gemini-1.5-pro", BuildConfig.API_KEY)
-            val prompt = "Generate a short motivational quote about drinking water."
-            val response = model.generateContent(prompt)?.text
-            if (response != null) quote = response
-
-            delay(3000) // 3 seconds
-            startActivity(Intent(this@SplashActivity, OnboardingActivity::class.java))
-            finish()
+            try {
+                // Show splash for 2 seconds
+                delay(2000)
+                if (!SessionManager.isOnboardingCompleted(this@SplashActivity)) {
+                    // First download: go to Onboarding
+                    Log.d("SplashActivity", "First launch, moving to Onboarding")
+                    startActivity(Intent(this@SplashActivity, OnboardingActivity::class.java))
+                } else {
+                    // Not first launch: check login status
+                    if (SessionManager.isLoggedIn(this@SplashActivity)) {
+                        Log.d("SplashActivity", "User logged in, moving to MainActivity")
+                        startActivity(Intent(this@SplashActivity, MainActivity::class.java))
+                    } else {
+                        Log.d("SplashActivity", "User not logged in, moving to LoginActivity")
+                        startActivity(Intent(this@SplashActivity, LoginActivity::class.java))
+                    }
+                }
+                finish()
+            } catch (e: Exception) {
+                Log.e("SplashActivity", "Splash screen failed: ${e.message}", e)
+                // Fallback to LoginActivity in case of error
+                startActivity(Intent(this@SplashActivity, LoginActivity::class.java))
+                finish()
+            }
         }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFFA4D7E1), Color(0xFF4A90E2))
-                    )
-                ),
+                .background(Color(0xFF4A90E2)),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "💧", // Water drop emoji as logo
-                    color = Color.White,
-                    fontSize = 48.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = quote,
-                    color = Color.White,
-                    fontSize = 24.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                CircularProgressIndicator(color = Color(0xFF4A90E2))
-            }
+            Text(
+                text = "Dropwise",
+                fontSize = 32.sp,
+                color = Color.White
+            )
         }
     }
 }
