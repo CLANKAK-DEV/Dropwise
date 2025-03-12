@@ -46,6 +46,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.room.Room
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class WaterReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -69,8 +74,21 @@ class WaterReminderReceiver : BroadcastReceiver() {
 
 @Composable
 fun GoalsScreen(activity: ComponentActivity) {
+    val scope = rememberCoroutineScope() // Added scope
     val context = LocalContext.current
     val prefs: SharedPreferences = context.getSharedPreferences("WaterGoals", Context.MODE_PRIVATE)
+    val db = remember {
+        Room.databaseBuilder(context, AppDatabase::class.java, "dropwise_db")
+            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .fallbackToDestructiveMigration()
+            .build()
+    }
+    val userId = SessionManager.getUserId(context) ?: run {
+        LaunchedEffect(Unit) {
+            Log.e("GoalsScreen", "No user logged in")
+        }
+        return
+    }
     var inputValue by remember { mutableStateOf(prefs.getString("inputValue", "") ?: "") }
     var inputType by remember { mutableStateOf(prefs.getString("inputType", "Weight") ?: "Weight") }
     var dailyWaterGoal by remember { mutableStateOf(prefs.getFloat("dailyWaterGoal", 0f)) }
@@ -136,12 +154,23 @@ fun GoalsScreen(activity: ComponentActivity) {
                     onClick = {
                         inputType = "Weight"
                         Log.d("GoalsScreen", "Selected input type: Weight")
-                        updateGoals(inputValue, inputType, prefs, drunkCups, { schedule = it }, {
-                            dailyWaterGoal = it
-                            waterPerHour = it / 16f
-                            cupsPerDay = (it / 0.25f).roundToInt().coerceAtLeast(1)
-                            progress = 0f
-                        }, globalAlarmActive, context)
+                        updateGoals(
+                            inputValue = inputValue,
+                            inputType = inputType,
+                            prefs = prefs,
+                            drunkCups = drunkCups,
+                            onScheduleUpdate = { schedule = it },
+                            onGoalUpdate = {
+                                dailyWaterGoal = it
+                                waterPerHour = it / 16f
+                                cupsPerDay = (it / 0.25f).roundToInt().coerceAtLeast(1)
+                                progress = 0f
+                            },
+                            globalAlarmActive = globalAlarmActive,
+                            context = context,
+                            db = db,
+                            userId = userId
+                        )
                     },
                     colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF1A73E8))
                 )
@@ -153,12 +182,23 @@ fun GoalsScreen(activity: ComponentActivity) {
                     onClick = {
                         inputType = "Liters"
                         Log.d("GoalsScreen", "Selected input type: Liters")
-                        updateGoals(inputValue, inputType, prefs, drunkCups, { schedule = it }, {
-                            dailyWaterGoal = it
-                            waterPerHour = it / 16f
-                            cupsPerDay = (it / 0.25f).roundToInt().coerceAtLeast(1)
-                            progress = 0f
-                        }, globalAlarmActive, context)
+                        updateGoals(
+                            inputValue = inputValue,
+                            inputType = inputType,
+                            prefs = prefs,
+                            drunkCups = drunkCups,
+                            onScheduleUpdate = { schedule = it },
+                            onGoalUpdate = {
+                                dailyWaterGoal = it
+                                waterPerHour = it / 16f
+                                cupsPerDay = (it / 0.25f).roundToInt().coerceAtLeast(1)
+                                progress = 0f
+                            },
+                            globalAlarmActive = globalAlarmActive,
+                            context = context,
+                            db = db,
+                            userId = userId
+                        )
                     },
                     colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF1A73E8))
                 )
@@ -193,7 +233,9 @@ fun GoalsScreen(activity: ComponentActivity) {
                         progress = 0f
                     },
                     globalAlarmActive = globalAlarmActive,
-                    context = context
+                    context = context,
+                    db = db,
+                    userId = userId
                 )
             },
             label = { Text(if (inputType == "Weight") "Weight (kg)" else "Daily Goal (L)", color = Color(0xFF333333)) },
@@ -223,7 +265,6 @@ fun GoalsScreen(activity: ComponentActivity) {
             )
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Custom Progress Bar with Water Animation
             CustomWaterProgressBar(progress = progress)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -280,6 +321,10 @@ fun GoalsScreen(activity: ComponentActivity) {
                                         drunkCups[time] = true
                                         val newProgress = (drunkCups.count { it.value } * 0.25f) / dailyWaterGoal
                                         progress = newProgress.coerceAtMost(1f)
+                                        // Save to database
+                                        scope.launch {
+                                            saveWaterIntake(context, 0.25, getTodayDate())
+                                        }
                                         with(prefs.edit()) {
                                             putBoolean("drunk_$time", true)
                                             putFloat("progress", progress)
@@ -307,9 +352,9 @@ fun GoalsScreen(activity: ComponentActivity) {
                                             editor.putBoolean("drunk_$time", drunkCups[time] ?: false)
                                         }
                                         editor.putInt("schedule_size", updatedSchedule.size)
-                                        val success = editor.commit() // Synchronous save
+                                        val success = editor.commit()
                                         if (success) {
-                                            schedule = updatedSchedule // Update state after successful save
+                                            schedule = updatedSchedule
                                             val wasDrunk = drunkCups[time] ?: false
                                             drunkCups.remove(time)
                                             drunkCups[newTime] = wasDrunk
@@ -455,7 +500,9 @@ private fun updateGoals(
     onScheduleUpdate: (List<Pair<String, Float>>) -> Unit,
     onGoalUpdate: (Float) -> Unit,
     globalAlarmActive: Boolean,
-    context: Context
+    context: Context,
+    db: AppDatabase,
+    userId: String
 ) {
     try {
         Log.d("GoalsScreen", "Updating goals with inputValue: $inputValue, inputType: $inputType")
@@ -616,11 +663,11 @@ private fun scheduleNotifications(context: Context, schedule: List<Pair<String, 
 
             // Schedule reminder 5 minutes before
             val fiveMinutesBefore = Calendar.getInstance().apply {
-                // Set this calendar to the same time as the original calendar
-                timeInMillis = calendar.timeInMillis
+                // Set this Calendar to the same time as 'calendar'
+                timeInMillis = calendar.timeInMillis  // Use timeInMillis for proper assignment
                 add(Calendar.MINUTE, -5)  // Subtract 5 minutes
-                if (before(Calendar.getInstance())) {  // Check if it's before the current time
-                    add(Calendar.DAY_OF_YEAR, 1)  // Add 1 day if it's in the past
+                if (before(Calendar.getInstance())) {  // If the new time is before the current time
+                    add(Calendar.DAY_OF_YEAR, 1)  // Add one day
                 }
             }
 

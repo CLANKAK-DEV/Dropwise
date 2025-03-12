@@ -49,6 +49,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+
     }
 
     composeOptions {
@@ -106,4 +107,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.google.android.material:material:1.12.0")
     implementation ("com.airbnb.android:lottie-compose:6.4.0") // For LottieAnimation
+    implementation("com.github.amitshekhariitbhu.Fast-Android-Networking:android-networking:1.0.4")
+    implementation("com.github.amitshekhariitbhu.Fast-Android-Networking:jackson-android-networking:1.0.4")
+    implementation("com.github.amitshekhariitbhu.Fast-Android-Networking:android-networking:1.0.4")
+    implementation("com.github.amitshekhariitbhu.Fast-Android-Networking:jackson-android-networking:1.0.4")
+
 }

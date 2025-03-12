@@ -1,9 +1,13 @@
 package com.example.dropwise
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -41,11 +45,11 @@ fun getTodayDate(): String {
 fun DashboardScreen() {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    // Use a singleton database instance
+    val prefs: SharedPreferences = context.getSharedPreferences("WaterGoals", Context.MODE_PRIVATE)
     val db = remember {
         Room.databaseBuilder(context, AppDatabase::class.java, "dropwise_db")
             .addMigrations(AppDatabase.MIGRATION_1_2)
-            .fallbackToDestructiveMigration() // For development; remove in production if migrations are needed
+            .fallbackToDestructiveMigration()
             .build()
     }.apply { AppDatabase.INSTANCE = this }
     val userId = SessionManager.getUserId(context) ?: run {
@@ -58,8 +62,10 @@ fun DashboardScreen() {
     var dailyIntake by remember { mutableStateOf(0f) }
     var weeklyIntakes by remember { mutableStateOf<List<WaterIntake>>(emptyList()) }
     var averageIntake by remember { mutableStateOf(0f) }
+    var dailyWaterGoal by remember { mutableStateOf(prefs.getFloat("dailyWaterGoal", 0f)) }
     var showDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollState = rememberScrollState() // Added for scrolling
 
     fun getStartDate(currentDate: String): String {
         val calendar = Calendar.getInstance()
@@ -88,10 +94,12 @@ fun DashboardScreen() {
                 val intake = db.userDao().getWaterIntakeForDate(userId, currentDate)
                 val startDate = getStartDate(currentDate)
                 val weekly = db.userDao().getWaterIntakesForWeek(userId, startDate, currentDate)
+                val goalFromPrefs = prefs.getFloat("dailyWaterGoal", 0f)
                 withContext(Dispatchers.Main) {
+                    dailyWaterGoal = goalFromPrefs
                     dailyIntake = (intake?.amount?.toFloat() ?: 0f)
                     weeklyIntakes = weekly
-                    val amounts = weekly.mapNotNull { it.amount?.toFloat() } // Handle nulls and convert to Float
+                    val amounts = weekly.mapNotNull { it.amount?.toFloat() }
                     averageIntake = if (amounts.isNotEmpty()) amounts.average().toFloat() else 0f
                 }
             }
@@ -113,7 +121,8 @@ fun DashboardScreen() {
                     bottom = paddingValues.calculateBottomPadding() + 16.dp,
                     start = 16.dp,
                     end = 16.dp
-                ),
+                )
+                .verticalScroll(scrollState), // Added vertical scrolling
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -178,7 +187,7 @@ fun DashboardScreen() {
                         }
                         axisLeft.apply {
                             axisMinimum = 0f
-                            axisMaximum = 4f // Adjust based on your max intake
+                            axisMaximum = (dailyWaterGoal * 1.5f).coerceAtLeast(4f)
                             textColor = Color(0xFF333333).toArgb()
                             textSize = 12f
                         }
@@ -195,7 +204,7 @@ fun DashboardScreen() {
                         val dataSet = BarDataSet(entries, "Weekly Intake").apply {
                             colors = weeklyIntakes.mapNotNull {
                                 it.amount?.toFloat()?.let { amount ->
-                                    if (amount >= 2.0f) Color(0xFF7ED321).toArgb() else Color(0xFF4A90E2).toArgb()
+                                    if (amount >= dailyWaterGoal) Color(0xFF7ED321).toArgb() else Color(0xFF4A90E2).toArgb()
                                 }
                             }
                             valueTextColor = Color(0xFF333333).toArgb()
@@ -203,7 +212,7 @@ fun DashboardScreen() {
                         }
                         chart.data = BarData(dataSet).apply { barWidth = 0.5f }
                     } else {
-                        chart.data = BarData() // Empty data to avoid crash
+                        chart.data = BarData()
                     }
                     chart.invalidate()
                 }
@@ -230,13 +239,13 @@ fun DashboardScreen() {
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
-                    progress = { (dailyIntake / 3f).coerceIn(0f, 1f) },
+                    progress = { (dailyIntake / dailyWaterGoal).coerceIn(0f, 1f) },
                     modifier = Modifier.size(150.dp),
                     color = Color(0xFF4A90E2),
                     strokeWidth = 20.dp
                 )
                 Text(
-                    text = "${String.format(Locale.getDefault(), "%.1f", dailyIntake)}L",
+                    text = "${String.format(Locale.getDefault(), "%.1f", dailyIntake)}L / ${String.format(Locale.getDefault(), "%.1f", dailyWaterGoal)}L",
                     fontSize = 24.sp,
                     color = Color(0xFF333333),
                     textAlign = TextAlign.Center
@@ -253,18 +262,17 @@ fun DashboardScreen() {
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(
-                    progress = { (averageIntake / 3f).coerceIn(0f, 1f) },
+                    progress = { (averageIntake / dailyWaterGoal).coerceIn(0f, 1f) },
                     modifier = Modifier.size(200.dp),
                     color = when {
-                        averageIntake >= 2.25f -> Color.Blue
-                        averageIntake >= 1.5f -> Color.Green
-                        averageIntake >= 0.75f -> Color.Yellow
+                        averageIntake >= dailyWaterGoal * 0.75f -> Color.Green
+                        averageIntake >= dailyWaterGoal * 0.5f -> Color.Yellow
                         else -> Color.Red
                     },
                     strokeWidth = 20.dp
                 )
                 Text(
-                    text = "${String.format(Locale.getDefault(), "%.0f", averageIntake * 100 / 3)}%",
+                    text = "${String.format(Locale.getDefault(), "%.0f", (averageIntake / dailyWaterGoal) * 100)}%",
                     fontSize = 24.sp,
                     color = Color(0xFF333333),
                     textAlign = TextAlign.Center
