@@ -5,9 +5,10 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "users")
 data class User(
-    @PrimaryKey val id: String, // Changed to String to match Firebase UID
+    @PrimaryKey val id: String,
     val username: String,
     val email: String,
-    val password: String = "", // Optional, can be empty
-    val birthday: String = "" // Optional, can be empty
+    val password: String = "",
+    val birthday: String = "",
+    val roomId: String = "room_$id" // Ensure this is part of the schema
 )

@@ -18,7 +18,7 @@ val localProperties = Properties().apply {
 
 android {
     namespace = "com.example.dropwise"
-    compileSdk = 35
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.example.dropwise"
@@ -60,7 +60,7 @@ dependencies {
     // Core Android and Kotlin
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.activity.compose)
+    implementation("androidx.activity:activity-compose:1.9.0") // Use the latest single version
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
@@ -84,29 +84,26 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
-    implementation("com.google.android.gms:play-services-auth:20.7.0")
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
 
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
-    // ai
-    implementation ("com.google.ai.client.generativeai:generativeai:0.5.0")
+
+    // AI
+    implementation("com.google.ai.client.generativeai:generativeai:0.5.0")
+    implementation ("androidx.compose.material:material-icons-extended")
     // Charting
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
-
+    implementation (  "io.coil-kt:coil-compose:2.6.0") // For AsyncImage
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
-
+    implementation ("androidx.compose.material:material-icons-extended")
+    implementation ("com.airbnb.android:lottie-compose:6.4.0") // For LottieAnimation
     // Other Libraries
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("com.google.android.material:material:1.12.0")
-
-        implementation ("androidx.compose.material3:material3:1.2.1" )// Use the latest version
-        implementation ("androidx.compose.ui:ui:1.6.0") // Ensure UI version compatibility
-        implementation ("androidx.activity:activity-compose:1.9.0") // For Compose Activity
-
-    implementation ("androidx.compose.material3:material3:1.2.1")
-
+    implementation ("com.airbnb.android:lottie-compose:6.4.0") // For LottieAnimation
 }

@@ -20,10 +20,10 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "dropwise_database"
+                    "dropwise_db"
                 )
                     .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration() // Add this to handle schema mismatches
+                    .fallbackToDestructiveMigration() // Temporary for testing
                     .build()
                 INSTANCE = instance
                 instance
@@ -32,21 +32,20 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // Drop the old water_intake table
                 database.execSQL("DROP TABLE IF EXISTS water_intake")
+                database.execSQL("DROP TABLE IF EXISTS users")
 
-                // Create the users table (in case it doesn't exist or has changed)
                 database.execSQL("""
                     CREATE TABLE IF NOT EXISTS users (
                         id TEXT PRIMARY KEY NOT NULL,
                         username TEXT NOT NULL,
                         email TEXT NOT NULL,
                         password TEXT,
-                        birthday TEXT
+                        birthday TEXT,
+                        roomId TEXT NOT NULL DEFAULT ''
                     )
                 """)
 
-                // Create the water_intake table with the new schema
                 database.execSQL("""
                     CREATE TABLE IF NOT EXISTS water_intake (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
