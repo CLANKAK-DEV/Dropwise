@@ -32,7 +32,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.airbnb.lottie.compose.*
-import java.util.Calendar
+import java.text.SimpleDateFormat
+import java.util.*
 import kotlin.math.roundToInt
 import android.content.SharedPreferences
 import androidx.compose.foundation.Image
@@ -74,12 +75,12 @@ class WaterReminderReceiver : BroadcastReceiver() {
 
 @Composable
 fun GoalsScreen(activity: ComponentActivity) {
-    val scope = rememberCoroutineScope() // Added scope
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val prefs: SharedPreferences = context.getSharedPreferences("WaterGoals", Context.MODE_PRIVATE)
     val db = remember {
         Room.databaseBuilder(context, AppDatabase::class.java, "dropwise_db")
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .fallbackToDestructiveMigration()
             .build()
     }
@@ -100,6 +101,15 @@ fun GoalsScreen(activity: ComponentActivity) {
         schedule.forEach { (time, _) -> this[time] = prefs.getBoolean("drunk_$time", false) }
     } }
     var globalAlarmActive by remember { mutableStateOf(prefs.getBoolean("globalAlarmActive", true)) }
+
+    // Update SharedPreferences when daily goal changes
+    LaunchedEffect(dailyWaterGoal) {
+        with(prefs.edit()) {
+            putFloat("dailyWaterGoal", dailyWaterGoal)
+            apply()
+        }
+        Log.d("GoalsScreen", "Daily goal updated in SharedPreferences: $dailyWaterGoal")
+    }
 
     // Check and trigger congratulation notification when progress reaches 100%
     LaunchedEffect(progress) {
@@ -129,7 +139,6 @@ fun GoalsScreen(activity: ComponentActivity) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
             .background(Color(0xFFF5F5F5))
             .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -138,14 +147,15 @@ fun GoalsScreen(activity: ComponentActivity) {
             text = "Objectifs",
             fontSize = 28.sp,
             color = Color(0xFF1A73E8),
-            style = MaterialTheme.typography.headlineMedium
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(top = 16.dp)
         )
         Spacer(modifier = Modifier.height(20.dp))
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 4.dp), // Reduced padding on sides
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -241,6 +251,7 @@ fun GoalsScreen(activity: ComponentActivity) {
             label = { Text(if (inputType == "Weight") "Weight (kg)" else "Daily Goal (L)", color = Color(0xFF333333)) },
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(horizontal = 4.dp) // Reduced padding on sides
                 .background(Color.White, RoundedCornerShape(8.dp))
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -278,6 +289,7 @@ fun GoalsScreen(activity: ComponentActivity) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 4.dp) // Reduced padding on sides
                     .background(Color.White, RoundedCornerShape(8.dp))
                     .padding(12.dp)
             ) {
@@ -304,7 +316,9 @@ fun GoalsScreen(activity: ComponentActivity) {
             }
             Spacer(modifier = Modifier.height(20.dp))
 
-            Column {
+            Column(
+                modifier = Modifier.padding(horizontal = 4.dp) // Reduced padding on sides
+            ) {
                 schedule.chunked(3).forEach { rowCups ->
                     Row(
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -317,56 +331,68 @@ fun GoalsScreen(activity: ComponentActivity) {
                                 isDrunk = drunkCups[time] ?: false,
                                 isNextDrink = time == nextDrinkTime,
                                 onCupClicked = {
-                                    if (!(drunkCups[time] ?: false)) {
-                                        drunkCups[time] = true
-                                        val newProgress = (drunkCups.count { it.value } * 0.25f) / dailyWaterGoal
-                                        progress = newProgress.coerceAtMost(1f)
-                                        // Save to database
-                                        scope.launch {
-                                            saveWaterIntake(context, 0.25, getTodayDate())
+                                    try {
+                                        if (!(drunkCups[time] ?: false)) {
+                                            drunkCups[time] = true
+                                            val newProgress = (drunkCups.count { it.value } * 0.25f) / dailyWaterGoal
+                                            progress = newProgress.coerceAtMost(1f)
+                                            // Save to database with timestamp
+                                            scope.launch {
+                                                try {
+                                                    val (hour, minute) = time.split(":").map { it.toInt() }
+                                                    val timestampCalendar = Calendar.getInstance().apply {
+                                                        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                                        val todayDate = dateFormat.parse(getTodayDate()) ?: Date()
+                                                        setTime(todayDate)
+                                                        set(Calendar.HOUR_OF_DAY, hour)
+                                                        set(Calendar.MINUTE, minute)
+                                                        set(Calendar.SECOND, 0)
+                                                        set(Calendar.MILLISECOND, 0)
+                                                    }
+                                                    val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(timestampCalendar.time)
+                                                    saveWaterIntake(context, 0.25f, getTodayDate(), timestamp)
+                                                    with(context.getSharedPreferences("WaterIntakeChart", Context.MODE_PRIVATE).edit()) {
+                                                        putFloat("dailyIntake", (drunkCups.count { it.value } * 0.25f))
+                                                        putString("intake_time_${drunkCups.count { it.value } - 1}", time)
+                                                        apply()
+                                                    }
+                                                    Log.d("GoalsScreen", "Saved intake: amount=0.25, date=${getTodayDate()}, timestamp=$timestamp")
+                                                } catch (e: Exception) {
+                                                    Log.e("GoalsScreen", "Failed to save water intake: ${e.message}", e)
+                                                }
+                                            }
+                                            with(prefs.edit()) {
+                                                putBoolean("drunk_$time", true)
+                                                putFloat("progress", progress)
+                                                apply()
+                                            }
+                                            Log.d("GoalsScreen", "Marked cup as drunk at $time, drunkCups: $drunkCups")
+                                            if (globalAlarmActive) {
+                                                try {
+                                                    cancelNotification(context, time, schedule.indexOfFirst { it.first == time })
+                                                    scheduleNotifications(context, schedule, drunkCups)
+                                                } catch (e: Exception) {
+                                                    Log.e("GoalsScreen", "Failed to handle notifications: ${e.message}", e)
+                                                }
+                                            }
                                         }
-                                        with(prefs.edit()) {
-                                            putBoolean("drunk_$time", true)
-                                            putFloat("progress", progress)
-                                            apply()
-                                        }
-                                        if (globalAlarmActive) {
-                                            cancelNotification(context, time, schedule.indexOfFirst { it.first == time })
-                                            scheduleNotifications(context, schedule, drunkCups)
-                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("GoalsScreen", "Error in onCupClicked: ${e.message}", e)
                                     }
                                 },
                                 onTimeEdited = { newTime ->
-                                    val oldEntry = schedule.find { it.first == time }
-                                    if (oldEntry != null) {
-                                        val updatedSchedule = schedule.map { entry ->
-                                            if (entry.first == time) newTime to entry.second
-                                            else entry
-                                        }.sortedBy { it.first }
-
-                                        // Save the updated schedule with indexed keys
-                                        val editor = prefs.edit()
-                                        updatedSchedule.forEachIndexed { index, (time, amount) ->
-                                            editor.putString("schedule_time_$index", time)
-                                            editor.putFloat("schedule_amount_$index", amount)
-                                            editor.putBoolean("drunk_$time", drunkCups[time] ?: false)
+                                    val index = schedule.indexOfFirst { it.first == time }
+                                    if (index != -1) {
+                                        val newSchedule = schedule.toMutableList().apply {
+                                            this[index] = newTime to amount
                                         }
-                                        editor.putInt("schedule_size", updatedSchedule.size)
-                                        val success = editor.commit()
-                                        if (success) {
-                                            schedule = updatedSchedule
-                                            val wasDrunk = drunkCups[time] ?: false
-                                            drunkCups.remove(time)
-                                            drunkCups[newTime] = wasDrunk
-                                            if (globalAlarmActive) {
-                                                schedule.forEachIndexed { index, _ ->
-                                                    cancelNotification(context, schedule[index].first, index)
-                                                }
-                                                scheduleNotifications(context, updatedSchedule, drunkCups)
-                                            }
-                                            Log.d("GoalsScreen", "Time changed successfully: $time to $newTime, saved schedule: $updatedSchedule")
-                                        } else {
-                                            Log.e("GoalsScreen", "Failed to save time change: $time to $newTime")
+                                        schedule = newSchedule
+                                        with(prefs.edit()) {
+                                            putString("schedule_time_$index", newTime)
+                                            apply()
+                                        }
+                                        if (globalAlarmActive) {
+                                            scheduleNotifications(context, schedule, drunkCups)
                                         }
                                     }
                                 }
@@ -379,6 +405,7 @@ fun GoalsScreen(activity: ComponentActivity) {
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp)) // Ensure some space at the bottom
         }
     }
 }
@@ -596,10 +623,11 @@ fun CustomWaterProgressBar(progress: Float) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 4.dp) // Reduced padding on sides
             .height(20.dp)
             .background(Color(0xFFEEEEEE), RoundedCornerShape(10.dp))
-            .scale(scale) // Scale effect when full
-            .offset(x = shakeOffsetX.dp) // Shake effect when full
+            .scale(scale)
+            .offset(x = shakeOffsetX.dp)
     ) {
         // Progress bar with solid blue color
         Box(
@@ -607,7 +635,7 @@ fun CustomWaterProgressBar(progress: Float) {
                 .fillMaxWidth(animatedProgress.coerceIn(0f, 1f))
                 .height(20.dp)
                 .background(
-                    color = Color(0xFF1A73E8), // Solid blue
+                    color = Color(0xFF1A73E8),
                     shape = RoundedCornerShape(10.dp)
                 )
         )
@@ -661,18 +689,16 @@ private fun scheduleNotifications(context: Context, schedule: List<Pair<String, 
                 }
             }
 
-            // Schedule reminder 5 minutes before
             val fiveMinutesBefore = Calendar.getInstance().apply {
-                // Set this Calendar to the same time as 'calendar'
-                timeInMillis = calendar.timeInMillis  // Use timeInMillis for proper assignment
-                add(Calendar.MINUTE, -5)  // Subtract 5 minutes
-                if (before(Calendar.getInstance())) {  // If the new time is before the current time
-                    add(Calendar.DAY_OF_YEAR, 1)  // Add one day
+                timeInMillis = calendar.timeInMillis
+                add(Calendar.MINUTE, -5)
+                if (before(Calendar.getInstance())) {
+                    add(Calendar.DAY_OF_YEAR, 1)
                 }
             }
 
             val reminderIntent = Intent(context, WaterReminderReceiver::class.java).apply {
-                putExtra("notificationId", index + schedule.size) // Unique ID for 5-min reminder
+                putExtra("notificationId", index + schedule.size)
                 putExtra("message", "Drink water in 5 minutes!")
             }
             val reminderPendingIntent = PendingIntent.getBroadcast(
@@ -689,7 +715,6 @@ private fun scheduleNotifications(context: Context, schedule: List<Pair<String, 
                 )
             }
 
-            // Schedule the main drink notification
             val drinkIntent = Intent(context, WaterReminderReceiver::class.java).apply {
                 putExtra("notificationId", index)
                 putExtra("message", "Time to Drink Water!")
@@ -733,7 +758,7 @@ private fun cancelNotification(context: Context, time: String, index: Int) {
 private fun sendCongratulationNotification(context: Context) {
     val notificationManager = NotificationManagerCompat.from(context)
     val channelId = "water_reminder_channel"
-    val notificationId = 999 // Unique ID for congratulation
+    val notificationId = 999
 
     val builder = NotificationCompat.Builder(context, channelId)
         .setSmallIcon(R.drawable.dropwiselogo)
@@ -746,3 +771,27 @@ private fun sendCongratulationNotification(context: Context) {
         notificationManager.notify(notificationId, builder.build())
     }
 }
+
+private suspend fun saveWaterIntake(context: Context, amount: Float, date: String, timestamp: String? = null) {
+    withContext(Dispatchers.IO) {
+        try {
+            val db = Room.databaseBuilder(
+                context,
+                AppDatabase::class.java,
+                "dropwise_db"
+            ).build()
+            val userId = SessionManager.getUserId(context) ?: return@withContext
+            val waterIntake = WaterIntake(
+                userId = userId,
+                amount = amount.toDouble(),
+                date = date,
+                timestamp = timestamp ?: SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            )
+            db.userDao().insertWaterIntake(waterIntake)
+            Log.d("GoalsScreen", "Water intake saved: $waterIntake")
+        } catch (e: Exception) {
+            Log.e("GoalsScreen", "Error saving water intake: ${e.message}", e)
+        }
+    }
+}
+

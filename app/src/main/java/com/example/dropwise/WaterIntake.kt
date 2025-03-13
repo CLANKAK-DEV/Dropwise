@@ -1,6 +1,7 @@
 package com.example.dropwise
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
@@ -9,6 +10,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 
 @Entity(
     tableName = "water_intake",
@@ -24,25 +26,22 @@ import kotlinx.coroutines.withContext
 data class WaterIntake(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val userId: String,
-    val amount: Double,
-    val date: String
+    val amount: Double?,
+    val date: String,
+    val hour: Int? = null, // Added in MIGRATION_1_2
+    val timestamp: String? = null // Added in MIGRATION_2_3
 )
+
 suspend fun saveWaterIntake(context: Context, amount: Double, date: String) {
-    val userId = SessionManager.getUserId(context) ?: return
-    val roomId = "room_$userId"
-
-    val db = Room.databaseBuilder(context, AppDatabase::class.java, "dropwise_db")
-        .addMigrations(AppDatabase.MIGRATION_1_2)
-        .build()
-
-    val waterIntake = WaterIntake(userId = userId, amount = amount, date = date)
-    withContext(Dispatchers.IO) {
+    try {
+        val userId = SessionManager.getUserId(context) ?: return
+        val db = AppDatabase.getDatabase(context)
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val waterIntake = WaterIntake(userId = userId, amount = amount, date = date, hour = hour)
         db.userDao().insertWaterIntake(waterIntake)
-        val firestore = FirebaseFirestore.getInstance()
-        firestore.collection("rooms").document(roomId)
-            .collection("water_intakes")
-            .document(date)
-            .set(mapOf("amount" to amount, "date" to date))
-            .await()
+        Log.d("GoalsScreen", "Successfully saved water intake: $amount L on $date at hour $hour")
+    } catch (e: Exception) {
+        Log.e("GoalsScreen", "Error saving water intake: ${e.message}", e)
+        throw e // Re-throw to ensure the caller can handle the error if needed
     }
 }

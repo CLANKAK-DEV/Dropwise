@@ -4,10 +4,12 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [User::class, WaterIntake::class], version = 2)
+@Database(entities = [User::class, WaterIntake::class], version = 3)
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun userDao(): UserDao
 
@@ -22,8 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dropwise_db"
                 )
-                    .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration() // Temporary for testing
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                 INSTANCE = instance
                 instance
@@ -32,29 +33,14 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("DROP TABLE IF EXISTS water_intake")
-                database.execSQL("DROP TABLE IF EXISTS users")
+                database.execSQL("ALTER TABLE water_intake ADD COLUMN hour INTEGER")
+            }
+        }
 
-                database.execSQL("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        id TEXT PRIMARY KEY NOT NULL,
-                        username TEXT NOT NULL,
-                        email TEXT NOT NULL,
-                        password TEXT,
-                        birthday TEXT,
-                        roomId TEXT NOT NULL DEFAULT ''
-                    )
-                """)
-
-                database.execSQL("""
-                    CREATE TABLE IF NOT EXISTS water_intake (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        userId TEXT NOT NULL,
-                        amount REAL NOT NULL,
-                        date TEXT NOT NULL,
-                        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-                    )
-                """)
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Add the timestamp column to the water_intake table
+                database.execSQL("ALTER TABLE water_intake ADD COLUMN timestamp TEXT DEFAULT NULL")
             }
         }
     }
