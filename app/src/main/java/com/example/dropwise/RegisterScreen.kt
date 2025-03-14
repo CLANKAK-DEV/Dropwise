@@ -7,18 +7,22 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineScope
@@ -29,12 +33,15 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
+
+
 class RegisterActivity : ComponentActivity() {
     private lateinit var googleSignInClient: GoogleSignInClient
     private lateinit var auth: FirebaseAuth
     private lateinit var firestore: FirebaseFirestore
     private val currentYear: Int = Calendar.getInstance().get(Calendar.YEAR)
     private val maxYear: Int = currentYear - 18
+    private val TAG = "RegisterActivity"
 
     private val googleSignInLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -44,6 +51,7 @@ class RegisterActivity : ComponentActivity() {
                 firebaseAuthWithGoogle(account)
             } catch (e: ApiException) {
                 showErrorMessage("Google sign-up failed: ${e.statusCode}")
+                Log.e(TAG, "Google sign-in failed", e)
             }
         } else {
             showErrorMessage("Google sign-up cancelled")
@@ -86,7 +94,8 @@ class RegisterActivity : ComponentActivity() {
                     finish()
                 },
                 maxYear = maxYear,
-                snackbarHostState = snackbarHostState
+                snackbarHostState = snackbarHostState,
+                modifier = Modifier // Error here
             )
         }
     }
@@ -94,10 +103,12 @@ class RegisterActivity : ComponentActivity() {
     private fun registerWithEmailPassword(state: RegistrationState, scope: CoroutineScope, snackbarHostState: SnackbarHostState) {
         scope.launch {
             try {
+                Log.d(TAG, "Starting registration with state: $state")
                 // Step 1: Validation
                 if (state.username.isBlank()) throw Exception("Username is required")
                 if (state.email.isBlank() || !isEmailValid(state.email)) throw Exception("Invalid email")
                 if (state.password.isBlank()) throw Exception("Password is required")
+                if (state.password.length < 6) throw Exception("Password must be at least 6 characters")
                 if (state.day.isBlank() || state.month.isBlank() || state.year.isBlank()) throw Exception("Date of birth is required")
 
                 val birthday = "${state.year}-${monthToNumber(state.month)}-${state.day.padStart(2, '0')}"
@@ -107,6 +118,7 @@ class RegisterActivity : ComponentActivity() {
                 val age = currentYear - SimpleDateFormat("yyyy", Locale.getDefault()).format(birthDate).toInt()
                 if (age < 18) throw Exception("You must be at least 18 years old")
 
+                Log.d(TAG, "Validation passed, registering user with email: ${state.email}")
                 // Step 2: Register with Firebase Auth
                 val authResult = withContext(Dispatchers.IO) {
                     auth.createUserWithEmailAndPassword(state.email, state.password).await()
@@ -114,6 +126,7 @@ class RegisterActivity : ComponentActivity() {
                 val userId = authResult.user?.uid ?: throw Exception("User ID not found")
                 val roomId = "room_$userId"
 
+                Log.d(TAG, "Firebase Auth successful, userId: $userId")
                 // Step 3: Save to Firestore
                 val userMap = hashMapOf(
                     "username" to state.username,
@@ -130,24 +143,25 @@ class RegisterActivity : ComponentActivity() {
                     firestore.collection("users").document(userId).set(userMap).await()
                     firestore.collection("rooms").document(roomId).set(roomMap).await()
                 }
+                Log.d(TAG, "Firestore save successful")
 
-                // Step 4: Save to Room
+                // Step 4: Save to Room (optional, proceed even if it fails)
                 try {
                     val db = AppDatabase.getDatabase(this@RegisterActivity)
                     val user = User(
                         id = userId,
                         username = state.username,
                         email = state.email,
-                        password = state.password, // Hash in production!
+                        password = state.password,
                         birthday = birthday,
                         roomId = roomId
                     )
                     withContext(Dispatchers.IO) {
                         db.userDao().insert(user)
                     }
+                    Log.d(TAG, "Room save successful")
                 } catch (e: Exception) {
-                    Log.e("RegisterActivity", "Failed to save to Room: ${e.message}", e)
-                    // Optionally, proceed even if Room fails since Firestore succeeded
+                    Log.e(TAG, "Failed to save to Room: ${e.message}", e)
                     snackbarHostState.showSnackbar("Local storage failed, but account created.")
                 }
 
@@ -156,9 +170,19 @@ class RegisterActivity : ComponentActivity() {
                 snackbarHostState.showSnackbar("Registration successful! Redirecting to Dashboard.")
                 startActivity(Intent(this@RegisterActivity, MainActivity::class.java))
                 finish()
+                Log.d(TAG, "Navigation to MainActivity successful")
 
+            } catch (e: FirebaseAuthException) {
+                val errorMessage = when (e.errorCode) {
+                    "ERROR_EMAIL_ALREADY_IN_USE" -> "This email is already in use. Please use a different email."
+                    "ERROR_WEAK_PASSWORD" -> "Password is too weak. It must be at least 6 characters."
+                    "ERROR_INVALID_EMAIL" -> "Invalid email format."
+                    else -> "Registration failed: ${e.message ?: "Unknown error"}"
+                }
+                Log.e(TAG, "Firebase Auth error: ${e.errorCode} - ${e.message}", e)
+                snackbarHostState.showSnackbar(errorMessage)
             } catch (e: Exception) {
-                Log.e("RegisterActivity", "Registration failed: ${e.message}", e)
+                Log.e(TAG, "Registration failed: ${e.message}", e)
                 snackbarHostState.showSnackbar("Registration failed: ${e.message ?: "Unknown error"}")
             }
         }
@@ -173,53 +197,24 @@ class RegisterActivity : ComponentActivity() {
         val credential = GoogleAuthProvider.getCredential(account.idToken, null)
         CoroutineScope(Dispatchers.Main).launch {
             try {
-                // Step 1: Authenticate with Firebase
                 val authResult = withContext(Dispatchers.IO) {
                     auth.signInWithCredential(credential).await()
                 }
                 val userId = authResult.user?.uid ?: throw Exception("User ID not found")
-                val roomId = "room_$userId"
+                val email = account.email ?: ""
+                val username = account.displayName ?: "Google User"
 
-                // Step 2: Save to Firestore
-                val userMap = hashMapOf(
-                    "username" to (account.displayName ?: "Google User"),
-                    "email" to (account.email ?: ""),
-                    "roomId" to roomId,
-                    "createdAt" to System.currentTimeMillis()
-                )
-                val roomMap = hashMapOf(
-                    "userId" to userId,
-                    "createdAt" to System.currentTimeMillis()
-                )
-                withContext(Dispatchers.IO) {
-                    firestore.collection("users").document(userId).set(userMap).await()
-                    firestore.collection("rooms").document(roomId).set(roomMap).await()
+                // Redirect to AgeVerificationActivity instead of completing registration here
+                val intent = Intent(this@RegisterActivity, AgeVerificationActivity::class.java).apply {
+                    putExtra("email", email)
+                    putExtra("username", username)
+                    putExtra("googleId", userId) // Pass Firebase UID
                 }
-
-                // Step 3: Save to Room
-                try {
-                    val db = AppDatabase.getDatabase(this@RegisterActivity)
-                    val user = User(
-                        id = userId,
-                        username = account.displayName ?: "Google User",
-                        email = account.email ?: "",
-                        roomId = roomId
-                    )
-                    withContext(Dispatchers.IO) {
-                        db.userDao().insert(user)
-                    }
-                } catch (e: Exception) {
-                    Log.e("RegisterActivity", "Failed to save to Room: ${e.message}", e)
-                    showErrorMessage("Local storage failed, but account created.")
-                }
-
-                // Step 4: Login and Navigate
-                SessionManager.login(this@RegisterActivity, userId)
-                startActivity(Intent(this@RegisterActivity, MainActivity::class.java))
-                finish()
+                startActivity(intent)
+                finish() // Finish RegisterActivity to prevent going back
 
             } catch (e: Exception) {
-                Log.e("RegisterActivity", "Google sign-up failed: ${e.message}", e)
+                Log.e(TAG, "Google sign-up failed: ${e.message}", e)
                 showErrorMessage("Google sign-up failed: ${e.message ?: "Unknown error"}")
             }
         }
@@ -243,3 +238,4 @@ fun monthToNumber(month: String): String {
         else -> "01"
     }
 }
+

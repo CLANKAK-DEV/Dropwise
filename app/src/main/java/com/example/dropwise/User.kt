@@ -8,7 +8,7 @@ data class User(
     @PrimaryKey val id: String,
     val username: String,
     val email: String,
-    val password: String = "",
-    val birthday: String = "",
+    val password: String = "", // Add password field
+     val birthday: String = "",
     val roomId: String = "room_$id" // Ensure this is part of the schema
 )

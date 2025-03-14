@@ -3,14 +3,25 @@ package com.example.dropwise
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Update
 
 @Dao
 interface UserDao {
     @Insert
     suspend fun insert(user: User)
+    @Update
+    suspend fun updateUser(user: User)
 
+    @Query("DELETE FROM water_intake WHERE userId = :userId") // Corrected column name
+    suspend fun deleteWaterIntakesByUserId(userId: String)
+
+    @Query("SELECT * FROM users WHERE id = :userId")
+    suspend fun getUser(userId: String): User?
     @Insert
     suspend fun insertWaterIntake(waterIntake: WaterIntake)
+
+    @Query("SELECT * FROM users WHERE id = :userId")
+    suspend fun getUserById(userId: String): User?
 
     @Query("SELECT * FROM water_intake WHERE userId = :userId AND date = :date")
     suspend fun getWaterIntakeForDate(userId: String, date: String): WaterIntake?

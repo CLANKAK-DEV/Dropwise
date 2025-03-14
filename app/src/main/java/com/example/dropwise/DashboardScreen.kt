@@ -580,6 +580,7 @@ fun DashboardScreen() {
     }
 }
 
+
 fun updateDate(currentDate: String, days: Int, scope: CoroutineScope, onUpdate: (String) -> Unit) {
     scope.launch {
         val calendar = Calendar.getInstance()

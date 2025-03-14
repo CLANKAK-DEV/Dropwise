@@ -1,12 +1,15 @@
 package com.example.dropwise
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,38 +18,56 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.TrackChanges
-import androidx.core.app.ActivityCompat
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private val notificationPermissionRequest = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Log.d("MainActivity", "Notification permission granted")
+        } else {
+            Log.e("MainActivity", "Notification permission denied")
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("MainActivity", "onCreate called")
 
+        // Request POST_NOTIFICATIONS permission (needed for API 33+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
+            if (ContextCompat.checkSelfPermission(
                     this,
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    1
-                )
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                Log.d("MainActivity", "Notification permission already granted")
             }
         }
 
-        setContent {
-            MainScreen(this)
+        try {
+            setContent {
+                MainScreen(this)
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Failed to set content", e)
+            finish()
         }
     }
 
@@ -80,6 +101,7 @@ class MainActivity : ComponentActivity() {
                             selected = pagerState.currentPage == index,
                             onClick = {
                                 scope.launch {
+                                    Log.d("MainActivity", "Navigating to tab: ${tab.title}")
                                     pagerState.animateScrollToPage(
                                         index,
                                         animationSpec = tween(200)
@@ -106,6 +128,7 @@ class MainActivity : ComponentActivity() {
                     state = pagerState,
                     modifier = Modifier.weight(1f)
                 ) { page ->
+                    Log.d("MainActivity", "Rendering page: $page")
                     AnimatedContent(
                         targetState = page,
                         transitionSpec = {
@@ -124,6 +147,5 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
     data class TabItem(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 }

@@ -47,6 +47,7 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/NOTICE.md"
+            excludes += "/META-INF/DEPENDENCIES" // Add this to exclude DEPENDENCIES files
             excludes += "/META-INF/LICENSE.md" // Add this line to exclude LICENSE.md
         }
     }
@@ -126,4 +127,18 @@ dependencies {
     // Email Sending
     implementation("com.sun.mail:android-mail:1.6.7")
     implementation("com.sun.mail:android-activation:1.6.7")
+    implementation("io.coil-kt:coil-compose:2.4.0")
+
+    implementation ("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation ("com.google.code.gson:gson:2.10.1")
+
+    implementation ("com.google.android.gms:play-services-auth:20.7.0")
+    implementation ("com.google.api-client:google-api-client-android:2.2.0")
+    implementation ("com.google.apis:google-api-services-drive:v3-rev20230822-2.0.0")
+
+    implementation ("com.google.api-client:google-api-client-android:1.36.0")
+    implementation ("com.google.http-client:google-http-client-gson:1.42.3")
+    implementation ("com.google.apis:google-api-services-drive:v3-rev197-1.25.0")
+
+    implementation ("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
 }

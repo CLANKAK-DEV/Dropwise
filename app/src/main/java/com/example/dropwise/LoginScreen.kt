@@ -84,25 +84,51 @@ class LoginActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             var state by remember { mutableStateOf(LoginState()) }
             snackbarHostState = remember { SnackbarHostState() }
+            var showResetScreen by remember { mutableStateOf(false) }
 
-            LoginScreenUI(
-                state = state,
-                onValueChange = { newState -> state = newState },
-                onLoginClick = {
-                    loginWithEmailPassword(state.email, state.password, scope)
-                },
-                onGoogleSignInClick = {
-                    signInWithGoogle()
-                },
-                onNavigateToRegister = {
-                    startActivity(Intent(this@LoginActivity, RegisterActivity::class.java))
-                    finish()
-                },
-                snackbarHostState = snackbarHostState
-            )
+            if (showResetScreen) {
+                ResetPasswordScreen(
+                    onResetPassword = { email ->
+                        resetPassword(email, scope)
+                    },
+                    onBackToLogin = {
+                        showResetScreen = false
+                    },
+                    snackbarHostState = snackbarHostState
+                )
+            } else {
+                LoginScreenUI(
+                    state = state,
+                    onValueChange = { newState -> state = newState },
+                    onLoginClick = {
+                        loginWithEmailPassword(state.email, state.password, scope)
+                    },
+                    onGoogleSignInClick = {
+                        signInWithGoogle()
+                    },
+                    onNavigateToRegister = {
+                        startActivity(Intent(this@LoginActivity, RegisterActivity::class.java))
+                        finish()
+                    },
+                    onNavigateToResetPassword = {
+                        showResetScreen = true
+                    },
+                    snackbarHostState = snackbarHostState
+                )
+            }
+        }
+
+    }
+    private fun resetPassword(email: String, scope: CoroutineScope) {
+        scope.launch {
+            try {
+                auth.sendPasswordResetEmail(email).await()
+                showErrorMessage("Password reset email sent successfully")
+            } catch (e: Exception) {
+                showErrorMessage("Failed to send reset email: ${e.message}")
+            }
         }
     }
-
     private fun signInWithGoogle() {
         Log.d("LoginActivity", "Initiating Google sign-in")
         val signInIntent = googleSignInClient.signInIntent
@@ -308,4 +334,5 @@ class LoginActivity : ComponentActivity() {
             }
         }
     }
+
 }
